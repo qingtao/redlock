@@ -33,7 +33,7 @@ func ExampleMutex_Exec() {
 		redlock.WithTimeout(30*time.Second),
 		// 锁的有效期
 		redlock.WithExpires(60*time.Second),
-		// 重试次数, 因此最大尝试测试是2+1
+		// 重试次数, 因此最大尝试次数是2+1
 		redlock.WithRetries(2),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -67,7 +67,7 @@ func ExampleMutex_Exec_extendCanceled() {
 	lock := workers.NewMutex(taskName("exec:extend:canceled"),
 		// 锁的有效期
 		redlock.WithExpires(500*time.Millisecond),
-		// 重试次数, 因此最大尝试测试是2+1
+		// 重试次数, 因此最大尝试次数是2+1
 		redlock.WithRetries(2),
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
@@ -118,7 +118,7 @@ func ExampleMutex_Exec_extendOk() {
 		redlock.WithTimeout(2*time.Second),
 		// 锁的有效期
 		redlock.WithExpires(3*time.Second),
-		// 重试次数, 因此最大尝试测试是2+1
+		// 重试次数, 因此最大尝试次数是2+1
 		redlock.WithRetries(2),
 	)
 	ctx := context.Background()

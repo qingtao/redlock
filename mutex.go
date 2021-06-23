@@ -49,10 +49,12 @@ func printLog(err error) {
 	}
 }
 
-type Debug struct{}
+// debug标记
+type debugFlag struct{}
 
-var debug *Debug
+var debug *debugFlag
 
+// randomDelay 产生一个[2-10)的随机延迟
 func randomDelay() time.Duration {
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := random.Int63n(10)
@@ -251,7 +253,8 @@ func (m *Mutex) lockOrExtend(ctx context.Context, extend bool) error {
 		err := m.tryLockOrExtend(ctx, extend)
 		// 计算加锁使用的时间
 		elapsed := time.Since(start)
-		if err == nil && elapsed <= m.opts.expires-m.opts.delay {
+		// 加锁使用的时间小于锁的过期时间减去随机的延迟, 认为是成功的
+		if err == nil && elapsed < m.opts.expires-m.opts.delay {
 			m.last = start
 			return nil
 		}
@@ -302,7 +305,7 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 			if conn == nil {
 				return nil
 			}
-			if err := m.tryUnlock(ctx1, conn); err != nil {
+			if err := m.unlockOne(ctx1, conn); err != nil {
 				errs = append(errs, err)
 			}
 			return nil
@@ -315,7 +318,7 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	return errs
 }
 
-func (m *Mutex) tryUnlock(ctx context.Context, conn Conn) error {
+func (m *Mutex) unlockOne(ctx context.Context, conn Conn) error {
 	var err error
 	// 和加锁时一样, 最多执行m.opts.retries+1次
 	// 每个实例都要重试, 直到成功或者达到最大次数

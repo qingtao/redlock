@@ -13,7 +13,7 @@ import (
 )
 
 func createClients() []Conn {
-	uri := `redis://default:redis@localhost:6379/2`
+	uri := `redis://:redis@127.0.0.1:6379/2`
 	u, err := url.Parse(uri)
 	if err != nil {
 		panic(err)
@@ -46,7 +46,7 @@ func createClients() []Conn {
 
 func TestMutex_tryLockOrExtend(t *testing.T) {
 	cs := createClients()
-	debug = &Debug{}
+	debug = &debugFlag{}
 	t.Cleanup(func() {
 		for _, c := range cs {
 			debug = nil

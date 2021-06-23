@@ -14,7 +14,7 @@ import (
 
 func createRedisClient(uri string) (*Client, error) {
 	if uri == "" {
-		uri = `redis://default:redis@localhost:6379/2`
+		uri = `redis://:redis@127.0.0.1:6379/2?read_timeout=2s`
 	}
 	u, err := url.Parse(uri)
 	if err != nil {
@@ -27,6 +27,18 @@ func createRedisClient(uri string) (*Client, error) {
 			return nil, err
 		}
 		opts = append(opts, redis.DialDatabase(n))
+	}
+	vs := u.Query()
+	if timeout := vs.Get("read_timeout"); timeout != "" {
+		d, err := time.ParseDuration(timeout)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts,
+			redis.DialConnectTimeout(d),
+			redis.DialWriteTimeout(d),
+			redis.DialReadTimeout(d),
+		)
 	}
 	if u.User != nil {
 		if username := u.User.Username(); username != "" {
@@ -73,6 +85,13 @@ func TestSetNX(t *testing.T) {
 	t.Run("ExpectFailed", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, timeout+expires)
 		defer cancel()
+		if err := c.SetNX(ctx, key, value, expires); err == nil {
+			t.Errorf("except error not nil")
+		}
+	})
+	t.Run("Canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
 		if err := c.SetNX(ctx, key, value, expires); err == nil {
 			t.Errorf("except error not nil")
 		}
@@ -163,24 +182,30 @@ func Test_execLuaScript(t *testing.T) {
 		t.Error(err)
 	}
 	// 模拟超时
-	t.Run("Timeout", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.TODO(), time.Nanosecond)
-		defer cancel()
-		if err := c.execLuaScript(ctx, timeout, deleteScript, key, value); err == nil {
-			t.Error("expect error: timeout")
+	// t.Run("Timeout", func(t *testing.T) {
+	// 	timeout = 200 * time.Nanosecond
+	// 	ctx1, cancel := context.WithTimeout(ctx, timeout)
+	// 	defer cancel()
+	// 	if err := c.execLuaScript(ctx1, timeout, deleteScript, key, value); err == nil {
+	// 		t.Error("expect error: timeout")
+	// 	}
+	// })
+	t.Run("ExpectFailed", func(t *testing.T) {
+		if err := c.execLuaScript(ctx, timeout, &luaScript{}, key, value); err == nil {
+			t.Error("expect error not nil")
 		}
 	})
-	t.Run("ExpectFailed", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-		defer cancel()
-		if err := c.execLuaScript(ctx, timeout, &luaScript{}, key, value); err == nil {
+	t.Run("Canceled", func(t *testing.T) {
+		ctx1, cancel := context.WithCancel(ctx)
+		cancel()
+		if err := c.execLuaScript(ctx1, timeout, deleteScript, key, value); err == nil {
 			t.Error("expect error not nil")
 		}
 	})
 }
 
 func TestCancel(t *testing.T) {
-	c, err := createRedisClient("redis://default:tomtom@localhost:6379/3")
+	c, err := createRedisClient("redis://default:tomtom@127.0.0.1:6379/3")
 	if err != nil {
 		t.Fatal(err)
 	}

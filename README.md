@@ -44,7 +44,7 @@ func main() {
 		redlock.WithTimeout(30*time.Second),
 		// 锁的有效期
 		redlock.WithExpires(60*time.Second),
-		// 重试次数, 因此最大尝试测试是2+1
+		// 重试次数, 因此最大尝试次数是2+1
 		redlock.WithRetries(2),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
