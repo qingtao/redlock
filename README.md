@@ -1,5 +1,7 @@
 # Redlock 实现一个基于redis的分布式锁
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/qingtao/redlock@v0.0.2.svg)](https://pkg.go.dev/github.com/qingtao/redlock@v0.0.2)
+
 [redlock](https://redis.io/topics/distlock)
 
 注意: 因为使用了`embed`包, 所以至少要求`Go`版本为**1.16**
