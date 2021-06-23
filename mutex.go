@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,7 +25,7 @@ const (
 	defaultRetries = 1
 )
 
-var logger *log.Logger = log.Default()
+var logger *log.Logger
 
 var (
 	defaultDelay = randomDelay()
@@ -42,8 +43,15 @@ func printLog(err error) {
 	if logger == nil {
 		return
 	}
-	log.Printf("error: %+v", err)
+	pc, file, line, ok := runtime.Caller(1)
+	if ok {
+		log.Printf("%s#%d-%s: %+v", file, line, runtime.FuncForPC(pc).Name(), err)
+	}
 }
+
+type Debug struct{}
+
+var debug *Debug
 
 func randomDelay() time.Duration {
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -102,6 +110,15 @@ func applyOptions(opts ...Option) *Options {
 	return o
 }
 
+// WithTimeout 设置请求超时时间
+func WithTimeout(d time.Duration) Option {
+	return func(o *Options) {
+		if d > 0 {
+			o.timeout = d
+		}
+	}
+}
+
 // WithExpires 设置过期时间
 func WithExpires(d time.Duration) Option {
 	return func(o *Options) {
@@ -139,10 +156,6 @@ type Mutex struct {
 
 	opts *Options
 }
-
-type Debug struct{}
-
-var debug *Debug
 
 // newMutex 创建一个新的互斥锁,参数name是认证的唯一标识,如:
 //	 userid:051c6b48-7a40-4826-850d-ea500adb7ebc
@@ -197,11 +210,7 @@ func (m *Mutex) tryLockOrExtend(ctx context.Context, extend bool) error {
 				return nil
 			}
 			// 成功数量加一
-			n := int(atomic.AddUint32(&m.success, 1))
-			// 如果满足最小成功数量,且成功数量小于实例数, 就尝试退出其他请求
-			if n >= minSuccess && n < len(m.opts.conns) {
-				cancel()
-			}
+			atomic.AddUint32(&m.success, 1)
 			return nil
 		})
 	}
@@ -230,6 +239,14 @@ func (m *Mutex) lockOrExtend(ctx context.Context, extend bool) error {
 	errs := make(MultiError, 0, num)
 	// 最大尝试m.opts.retries+1次
 	for i := 0; i < num; i++ {
+		// 每次重试都检查是不是上游退出或者超时
+		select {
+		case <-ctx.Done():
+			if err := ctx.Err(); errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+		default:
+		}
 		errs = errs[:0]
 		err := m.tryLockOrExtend(ctx, extend)
 		// 计算加锁使用的时间
@@ -275,10 +292,10 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	// 接收多个错误
 	errs := make(MultiError, 0, len(m.opts.conns))
 	// 设置超时时间
-	ctx, cancel := context.WithTimeout(ctx, m.opts.timeout)
+	ctx1, cancel := context.WithTimeout(ctx, m.opts.timeout)
 	defer cancel()
 	// 并发执行解锁锁
-	group, ctx1 := errgroup.WithContext(ctx)
+	group, ctx1 := errgroup.WithContext(ctx1)
 	for i := 0; i < len(m.opts.conns); i++ {
 		conn := m.opts.conns[i]
 		group.Go(func() error {
@@ -303,14 +320,18 @@ func (m *Mutex) tryUnlock(ctx context.Context, conn Conn) error {
 	// 和加锁时一样, 最多执行m.opts.retries+1次
 	// 每个实例都要重试, 直到成功或者达到最大次数
 	for i := 0; i < m.opts.retries+1; i++ {
-		if err = conn.Delete(ctx, m.name, m.value); err == nil {
-			return nil
+		select {
+		case <-ctx.Done():
+			if err = ctx.Err(); errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+		default:
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
+		if err := conn.Delete(ctx, m.name, m.value); err == nil {
 			return nil
 		}
 	}
-	return err
+	return nil
 }
 
 // LastTime 返回加锁成功的时间
