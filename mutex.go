@@ -139,6 +139,7 @@ func WithRetries(n int) Option {
 	}
 }
 
+// WithConnections 设置客户端连接, 并不检查是否是nil, 传入的数量就是所有的redis实例数
 func WithConnections(conns ...Conn) Option {
 	return func(o *Options) {
 		o.conns = append(o.conns, conns...)
@@ -196,11 +197,12 @@ func (m *Mutex) tryLockOrExtend(ctx context.Context, extend bool) error {
 	// 并发执行加锁
 	group, ctx1 := errgroup.WithContext(ctx)
 	for i := 0; i < len(m.opts.conns); i++ {
-		i, conn := i, m.opts.conns[i]
+		conn := m.opts.conns[i]
+		// 直接跳过
+		if conn == nil {
+			continue
+		}
 		group.Go(func() error {
-			if conn == nil {
-				return fmt.Errorf("redis connections index %d is nil", i)
-			}
 			var err error
 			if extend {
 				err = conn.Extend(ctx1, m.name, m.value, m.opts.expires)
@@ -301,10 +303,10 @@ func (m *Mutex) Unlock(ctx context.Context) error {
 	group, ctx1 := errgroup.WithContext(ctx1)
 	for i := 0; i < len(m.opts.conns); i++ {
 		conn := m.opts.conns[i]
+		if conn == nil {
+			continue
+		}
 		group.Go(func() error {
-			if conn == nil {
-				return nil
-			}
 			if err := m.unlockOne(ctx1, conn); err != nil {
 				errs = append(errs, err)
 			}
