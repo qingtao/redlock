@@ -4,6 +4,8 @@
 
 [redlock](https://redis.io/topics/distlock)
 
+**!!!** 我把仓库迁移到了[gitee](https://gitee.com/wqt/redlock)
+
 注意: 因为使用了`embed`包, 所以至少要求`Go`版本为**1.16**
 
 示例:
